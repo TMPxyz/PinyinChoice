@@ -4,7 +4,7 @@
 
 const CACHE_NAME = 'pinyin-game-v1';
 
-// 需要预缓存的核心文件
+// 需要预缓存的核心文件（含语音精灵）
 const PRECACHE_URLS = [
   '.',
   'index.html',
@@ -14,7 +14,9 @@ const PRECACHE_URLS = [
   'charPY.txt',
   'manifest.json',
   'icons/icon-192.svg',
-  'icons/icon-512.svg'
+  'icons/icon-512.svg',
+  'audio/sprite.mp3',
+  'audio/sprite_index.json'
 ];
 
 // ---- 安装阶段：预缓存核心文件 ----

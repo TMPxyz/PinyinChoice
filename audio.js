@@ -80,7 +80,7 @@ const AudioManager = {
 
     const off = new OfflineAudioContext(2, frameCount, sr);
     const master = off.createGain();
-    master.gain.setValueAtTime(0.3, 0);
+    master.gain.setValueAtTime(0.2, 0);
     master.connect(off.destination);
 
     // ----- 定义音符工具函数 -----

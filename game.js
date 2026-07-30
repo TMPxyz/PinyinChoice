@@ -449,14 +449,43 @@ const UIManager = {
    * @param {{ type: string, question: string, correct: string, options: string[] }} question
    */
   renderQuestion(question) {
-    this.questionTextEl.textContent = question.question;
+    // 题目标题 + 喇叭按钮
+    this.questionTextEl.innerHTML = `
+      <span class="question-content">${question.question}</span>
+      <button class="speaker-btn" id="question-speaker" title="点击发音">🔊</button>
+    `;
+
+    // 绑定题目喇叭点击事件
+    const speakerBtn = document.getElementById('question-speaker');
+    speakerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      VoicePlayer.playQuestion(question);
+    });
 
     // 重置选项按钮
     this.optionBtns.forEach((btn, i) => {
-      btn.textContent = question.options[i] || '';
+      const optText = question.options[i] || '';
+      btn.innerHTML = `
+        <span class="option-text">${optText}</span>
+        <span class="option-speaker">🔊</span>
+      `;
       btn.disabled = false;
       btn.className = 'option-btn';
+
+      // 绑定选项喇叭点击（阻止触发答题）
+      const optSpeaker = btn.querySelector('.option-speaker');
+      optSpeaker.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (question.type === 'char-to-pinyin') {
+          VoicePlayer.playPinyin(optText);
+        } else {
+          VoicePlayer.playChar(optText);
+        }
+      });
     });
+
+    // 自动播放题目语音（浏览器自动播放策略在首次交互后生效）
+    try { VoicePlayer.playQuestion(question); } catch (_) {}
   },
 
   /**
@@ -655,15 +684,152 @@ const ConfettiEffect = {
 };
 
 /* ============================
+   VoicePlayer - Audio Sprite 语音播放
+   ============================
+
+   使用 Web Audio API 从 sprite.mp3 精灵图中
+   按时间偏移量精准播放每个片段。
+
+   采用懒加载策略：索引 JSON 随启动加载，
+   精灵音频文件在首次点击 🔊 时才拉取和解码。
+   ============================ */
+const VoicePlayer = {
+  /** @type {AudioContext|null} */
+  _ctx: null,
+  /** @type {AudioBuffer|null} */
+  _buffer: null,
+  /** @type {object|null} */
+  _index: null,
+  /** @type {boolean} */
+  _loading: false,
+  /** @type {Array<{start:number, end:number}>} */
+  _pending: [],
+
+  /**
+   * 初始化：仅加载轻量索引 JSON
+   * @returns {Promise<void>}
+   */
+  async load() {
+    try {
+      const indexResp = await fetch('audio/sprite_index.json');
+      if (!indexResp.ok) throw new Error('索引加载失败');
+      this._index = await indexResp.json();
+    } catch (err) {
+      console.warn('[VoicePlayer] 索引加载失败:', err);
+    }
+  },
+
+  /**
+   * 首次使用时懒加载精灵音频
+   * @returns {Promise<boolean>}
+   */
+  async _ensureBuffer() {
+    if (this._buffer) return true;
+    if (this._loading) return false;
+    this._loading = true;
+
+    try {
+      this._ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const resp = await fetch('audio/sprite.mp3');
+      if (!resp.ok) throw new Error('精灵文件加载失败');
+
+      const arrayBuffer = await resp.arrayBuffer();
+      this._buffer = await this._ctx.decodeAudioData(arrayBuffer);
+      console.log(`[VoicePlayer] 精灵就绪: ${this._index.total} 片段, ${this._index.duration.toFixed(1)}s`);
+
+      // 播放积压的待播放片段
+      for (const seg of this._pending) {
+        this._playSegmentNow(seg.start, seg.end);
+      }
+      this._pending = [];
+      return true;
+    } catch (err) {
+      console.warn('[VoicePlayer] 精灵加载失败:', err);
+      return false;
+    } finally {
+      this._loading = false;
+    }
+  },
+
+  /**
+   * 确保 AudioContext 处于运行状态
+   */
+  _resumeContext() {
+    if (this._ctx && this._ctx.state === 'suspended') {
+      this._ctx.resume().catch(() => {});
+    }
+  },
+
+  /**
+   * 实际播放
+   */
+  _playSegmentNow(start, end) {
+    if (!this._buffer || !this._ctx) return;
+    this._resumeContext();
+    const duration = end - start;
+    if (duration <= 0) return;
+    try {
+      const source = this._ctx.createBufferSource();
+      source.buffer = this._buffer;
+      source.connect(this._ctx.destination);
+      source.start(0, start, duration);
+    } catch (_) {}
+  },
+
+  /**
+   * 播放精灵中的一个片段（自动触发懒加载）
+   */
+  _playSegment(start, end) {
+    if (this._buffer) {
+      this._playSegmentNow(start, end);
+    } else {
+      // 缓存待播放片段
+      this._pending.push({ start, end });
+      this._ensureBuffer();
+    }
+  },
+
+  /**
+   * 播放汉字的语音
+   */
+  playChar(char) {
+    if (!this._index) return;
+    const seg = this._index.chars[char];
+    if (seg) this._playSegment(seg.s, seg.e);
+  },
+
+  /**
+   * 播放拼音的语音
+   */
+  playPinyin(pinyin) {
+    if (!this._index) return;
+    const seg = this._index.pinyins[pinyin];
+    if (seg) this._playSegment(seg.s, seg.e);
+  },
+
+  /**
+   * 根据题目类型播放对应的语音
+   */
+  playQuestion(question) {
+    if (question.type === 'char-to-pinyin') {
+      this.playChar(question.question);
+    } else {
+      this.playPinyin(question.question);
+    }
+  },
+};
+
+/* ============================
    启动
    ============================ */
 (async function main() {
   try {
     UIManager.init();
-    // 并行加载数据和音频
+    // 并行加载数据、音效、语音精灵
     await Promise.all([
       DataManager.load(),
       AudioManager.load(),
+      VoicePlayer.load(),
     ]);
     UIManager.showGameArea();
     GameManager.init();
