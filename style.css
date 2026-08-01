@@ -212,7 +212,7 @@ html, body {
 
 .option-btn {
   padding: 16px 8px;
-  font-size: 1.3rem;
+  font-size: 3.25rem;
   font-weight: 600;
   border: 2px solid #e0e6ed;
   border-radius: 12px;
@@ -324,7 +324,7 @@ html, body {
   }
 
   .option-btn {
-    font-size: 1.1rem;
+    font-size: 2.75rem;
     padding: 14px 6px;
   }
 
