@@ -462,7 +462,7 @@ const UIManager = {
       VoicePlayer.playQuestion(question);
     });
 
-    // 重置选项按钮
+    // 重置选项按钮（清除上一题的选中/正误状态）
     this.optionBtns.forEach((btn, i) => {
       const optText = question.options[i] || '';
       btn.innerHTML = `
@@ -470,7 +470,8 @@ const UIManager = {
         <span class="option-speaker">🔊</span>
       `;
       btn.disabled = false;
-      btn.className = 'option-btn';
+      btn.classList.remove('selected', 'correct', 'wrong');
+      btn.blur();
 
       // 绑定选项喇叭点击（阻止触发答题）
       const optSpeaker = btn.querySelector('.option-speaker');
